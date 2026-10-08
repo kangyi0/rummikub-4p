@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   <title>2~4인 온라인 루미큐브</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css?v=20261008-3" />
 </head>
 <body>
   <main class="app-shell">
@@ -82,7 +82,7 @@
       <p id="waitingRoomInfo" class="small">참가자 - / -</p>
       <div id="waitingPlayers" class="waiting-players"></div>
       <p id="waitingHostNote" class="small"></p>
-      <div class="wait-actions"><button id="copyCodeBtn">방 코드 복사</button><button id="copyLinkBtn">초대 링크 복사</button><button id="startGameBtn" class="primary hidden">게임 시작</button></div>
+      <div class="wait-actions"><button id="copyCodeBtn">방 코드 복사</button><button id="copyLinkBtn">초대 링크 복사</button><button id="startGameBtn" class="primary hidden">게임 시작</button><button id="endSessionBtn" class="danger-btn hidden">세션 종료</button></div>
     </section>
 
     <section id="game" class="hidden">
@@ -124,7 +124,8 @@
       </section>
 
       <div class="actions card">
-        <button id="newGameBtn" class="ghost">새 게임 시작</button>
+        <button id="newGameBtn" class="ghost">새 게임 설정</button>
+        <button id="stopGameBtn" class="danger-btn">지금 게임 중지</button>
         <button id="undoMoveBtn" class="ghost">직전 한 수 되돌리기</button>
         <button id="resetBtn" class="ghost">이번 턴 모두 되돌리기</button>
         <button id="drawBtn">타일 1장 뽑기</button>
@@ -134,6 +135,47 @@
       <p id="message" class="message" role="status"></p>
     </section>
   </main>
+
+
+  <dialog id="newGameDialog">
+    <form id="newGameForm" class="dialog-inner">
+      <h2>새 게임 설정</h2>
+      <p class="small">현재 방은 유지하고 게임판을 초기화한 뒤 대기실로 돌아갑니다. 접속 중인 사람은 유지됩니다.</p>
+      <label>사람 참가자 수
+        <select id="newHumanCount">
+          <option value="1">1명</option>
+          <option value="2">2명</option>
+          <option value="3">3명</option>
+          <option value="4">4명</option>
+        </select>
+      </label>
+      <label>AI 참가자 수
+        <select id="newAiCount">
+          <option value="0">0명</option>
+          <option value="1">1명</option>
+          <option value="2">2명</option>
+          <option value="3">3명</option>
+        </select>
+      </label>
+      <label>한 턴 제한 시간
+        <select id="newTurnLimit">
+          <option value="30">30초</option>
+          <option value="45">45초</option>
+          <option value="60">60초</option>
+          <option value="90">90초</option>
+          <option value="120">2분</option>
+          <option value="180">3분</option>
+          <option value="300">5분</option>
+          <option value="0">제한 없음</option>
+        </select>
+      </label>
+      <p id="newGameConfigNote" class="small"></p>
+      <div class="dialog-actions">
+        <button type="button" id="cancelNewGameBtn" class="ghost">취소</button>
+        <button type="submit" class="primary">설정 적용</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="rulesDialog">
     <div class="dialog-inner">
@@ -153,7 +195,8 @@
         <li>방장은 대기실에서 참가자 구성을 확인한 뒤 게임을 시작합니다. 사람과 AI를 섞어서 플레이할 수 있습니다.</li>
         <li>직전 플레이어의 턴에서 재배치된 기존 타일은 강조되고, 새로 내려놓은 타일은 다른 색 테두리로 표시됩니다.</li>
         <li>턴이 바뀔 때 효과음이 납니다. 브라우저 정책상 첫 클릭 이후부터 소리가 재생됩니다.</li>
-        <li><b>새 게임 시작</b>을 누르면 같은 방과 같은 상대를 유지한 채 모든 타일을 다시 섞고 14장씩 새로 나눕니다.</li>
+        <li><b>새 게임 설정</b>을 누르면 사람 참가자 수, AI 수, 턴 제한 시간을 다시 정하고 대기실로 돌아갑니다.</li>
+        <li><b>지금 게임 중지</b> 또는 <b>세션 종료</b>를 누르면 현재 방 자체가 완전히 종료되어 기존 방 코드는 더 이상 사용할 수 없습니다.</li>
         <li><b>직전 한 수 되돌리기</b>를 누르면 방금 옮긴 타일 한 번의 이동만 원래 위치로 되돌립니다. 여러 번 누르면 한 수씩 차례로 되돌릴 수 있습니다.</li>
         <li>턴 타이머는 공용 테이블 바로 아래에 표시됩니다.</li>
         <li>시간이 끝나면 이번 턴의 임시 이동은 취소되고, 타일 1장을 자동으로 뽑은 뒤 다음 플레이어 턴으로 넘어갑니다. 더미가 비었으면 자동 패스합니다.</li>
@@ -163,6 +206,6 @@
     </div>
   </dialog>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=20261008-3"></script>
 </body>
 </html>

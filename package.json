@@ -1,6 +1,6 @@
 {
   "name": "rummikub-multiplayer",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "Dependency-free 2-4 player browser Rummikub-style game with human/AI mixed rooms using Node.js + Server-Sent Events",
   "main": "server.js",

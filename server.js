@@ -240,8 +240,13 @@ function stateFor(room, playerId) {
     gameNumber: room.gameNumber,
     hostPlayerId: room.hostPlayerId,
     maxPlayers: room.maxPlayers,
+    humanSlots: room.humanSlots ?? Math.max(1, room.maxPlayers - room.players.filter(p => p.isAI).length),
+    aiCount: room.players.filter(p => p.isAI).length,
+    humanCount: room.players.filter(p => !p.isAI).length,
     players: publicPlayers,
-    canStart: room.status === 'waiting' && me.id === room.hostPlayerId && room.players.length >= 2,
+    canStart: room.status === 'waiting' && me.id === room.hostPlayerId
+      && room.players.length >= 2
+      && room.players.filter(p => !p.isAI).length >= (room.humanSlots ?? 1),
     me: {
       id: me.id,
       name: me.name,
@@ -275,6 +280,7 @@ function createRoom(name, turnLimitSec = 60, maxPlayers = 2, aiCount = 0) {
     status: 'waiting',
     hostPlayerId: player.id,
     maxPlayers,
+    humanSlots: Math.max(1, maxPlayers - aiCount),
     players: [player],
     pool: makePool(),
     table: [],
@@ -298,7 +304,8 @@ function createRoom(name, turnLimitSec = 60, maxPlayers = 2, aiCount = 0) {
 }
 
 function startRoom(room, actorName = '') {
-  if (room.status !== 'waiting' || room.players.length < 2) return false;
+  const humanCount = room.players.filter(p => !p.isAI).length;
+  if (room.status !== 'waiting' || room.players.length < 2 || humanCount < (room.humanSlots ?? 1)) return false;
   if (room.aiTimer) clearTimeout(room.aiTimer);
   room.aiTimer = null;
   room.pool = makePool();
@@ -322,9 +329,38 @@ function startRoom(room, actorName = '') {
   return true;
 }
 
-function restartRoom(room, actorName = '') {
+function reconfigureRoom(room, humanSlots, aiCount, turnLimitSec, actorName = '') {
   if (room.aiTimer) clearTimeout(room.aiTimer);
   room.aiTimer = null;
+
+  const humans = room.players.filter(p => !p.isAI);
+  humanSlots = Math.max(1, Math.min(4, Math.round(Number(humanSlots) || 1)));
+  aiCount = Math.max(0, Math.min(3, Math.round(Number(aiCount) || 0)));
+  const total = humanSlots + aiCount;
+
+  if (total < 2 || total > 4) {
+    throw new Error('사람과 AI를 합쳐 2~4명으로 설정해 주세요.');
+  }
+
+  const host = humans.find(p => p.id === room.hostPlayerId);
+  const others = humans.filter(p => p.id !== room.hostPlayerId);
+  const orderedHumans = host ? [host, ...others] : humans;
+  const keptHumans = orderedHumans.slice(0, humanSlots);
+  const removedHumans = orderedHumans.slice(humanSlots);
+  const removedPayload = `event: player-removed\ndata: ${JSON.stringify({ message: '방장이 새 게임의 사람 참가자 수를 줄여 현재 방에서 제외되었습니다.' })}\n\n`;
+  for (const p of removedHumans) {
+    for (const res of p.streams) {
+      try { res.write(removedPayload); } catch (_) {}
+      try { res.end(); } catch (_) {}
+    }
+    p.streams.clear();
+  }
+
+  room.players = keptHumans;
+  for (let i = 0; i < aiCount; i++) room.players.push(makePlayer(`AI ${i + 1}`, true));
+  room.humanSlots = humanSlots;
+  room.maxPlayers = total;
+  room.turnLimitSec = normalizeTurnLimit(turnLimitSec);
   room.gameNumber = (room.gameNumber || 1) + 1;
   room.pool = makePool();
   room.table = [];
@@ -333,27 +369,33 @@ function restartRoom(room, actorName = '') {
   room.turnDeadline = null;
   room.turnPlayerId = null;
   room.turnNumber = 0;
+  room.status = 'waiting';
   for (const p of room.players) {
     p.hand = [];
     p.initialDone = false;
   }
+  room.lastAction = actorName
+    ? `${actorName}님이 새 게임 설정을 변경했습니다.`
+    : '새 게임 설정을 변경했습니다.';
+  room.lastActionAt = Date.now();
+}
 
-  if (room.players.length >= 2) {
-    for (const p of room.players) p.hand = room.pool.splice(0, 14);
-    room.status = 'playing';
-    room.turnPlayerId = room.players[Math.floor(Math.random() * room.players.length)].id;
-    room.turnNumber = 1;
-    room.lastAction = actorName
-      ? `${actorName}님이 새 게임을 시작했습니다.`
-      : '새 게임을 시작했습니다.';
-    room.lastActionAt = Date.now();
-    startTurnClock(room);
-    scheduleAITurn(room);
-  } else {
-    room.status = 'waiting';
-    room.lastAction = '새 게임을 준비하고 있습니다.';
-    room.lastActionAt = Date.now();
+function endRoomSession(room, actorName = '') {
+  if (room.aiTimer) clearTimeout(room.aiTimer);
+  room.aiTimer = null;
+  const message = actorName
+    ? `${actorName}님이 게임 세션을 종료했습니다.`
+    : '게임 세션이 종료되었습니다.';
+  const payload = `event: session-ended\ndata: ${JSON.stringify({ message })}\n\n`;
+  for (const p of room.players) {
+    for (const res of p.streams) {
+      try { res.write(payload); } catch (_) {}
+      try { res.end(); } catch (_) {}
+    }
+    p.streams.clear();
   }
+  rooms.delete(room.code);
+  return message;
 }
 
 function startTurnClock(room) {
@@ -688,8 +730,10 @@ const server = http.createServer(async (req, res) => {
       const room = rooms.get(code);
       if (!room) return json(res, 404, { error: '방을 찾을 수 없습니다.' });
       if (room.status !== 'waiting') return json(res, 409, { error: '이미 시작된 방입니다.' });
-      if (room.players.length >= room.maxPlayers) return json(res, 409, { error: '이 방은 이미 정원이 찼습니다.' });
-      const humanNumber = room.players.filter(p => !p.isAI).length + 1;
+      const currentHumans = room.players.filter(p => !p.isAI).length;
+      const humanSlots = room.humanSlots ?? Math.max(1, room.maxPlayers - room.players.filter(p => p.isAI).length);
+      if (currentHumans >= humanSlots) return json(res, 409, { error: '이 방의 사람 참가자 자리가 모두 찼습니다.' });
+      const humanNumber = currentHumans + 1;
       const player = makePlayer(String(body.name || `플레이어 ${humanNumber}`).trim().slice(0, 20) || `플레이어 ${humanNumber}`, false);
       room.players.push(player);
       room.lastAction = `${player.name}님이 방에 들어왔습니다.`;
@@ -743,17 +787,28 @@ const server = http.createServer(async (req, res) => {
         if (player.id !== room.hostPlayerId) return json(res, 403, { error: '방장만 게임을 시작할 수 있습니다.' });
         if (room.status !== 'waiting') return json(res, 409, { error: '이미 게임이 시작되었습니다.' });
         if (room.players.length < 2) return json(res, 409, { error: '최소 2명이 있어야 게임을 시작할 수 있습니다.' });
+        const humanCount = room.players.filter(p => !p.isAI).length;
+        if (humanCount < (room.humanSlots ?? 1)) return json(res, 409, { error: `사람 참가자 ${room.humanSlots}명이 모두 들어와야 시작할 수 있습니다.` });
         startRoom(room, player.name);
         broadcast(room);
         return json(res, 200, stateFor(room, player.id));
       }
 
-      if (body.type === 'restart') {
-        if (player.isAI) return json(res, 403, { error: 'AI는 새 게임을 시작할 수 없습니다.' });
-        if (room.players.length < 2) return json(res, 409, { error: '최소 2명이 있어야 새 게임을 시작할 수 있습니다.' });
-        restartRoom(room, player.name);
+      if (body.type === 'reconfigure') {
+        if (player.id !== room.hostPlayerId) return json(res, 403, { error: '방장만 새 게임 설정을 바꿀 수 있습니다.' });
+        try {
+          reconfigureRoom(room, body.humanSlots, body.aiCount, body.turnLimitSec, player.name);
+        } catch (e) {
+          return json(res, 400, { error: e.message || '새 게임 설정을 적용할 수 없습니다.' });
+        }
         broadcast(room);
         return json(res, 200, stateFor(room, player.id));
+      }
+
+      if (body.type === 'endSession') {
+        if (player.id !== room.hostPlayerId) return json(res, 403, { error: '방장만 세션을 종료할 수 있습니다.' });
+        const message = endRoomSession(room, player.name);
+        return json(res, 200, { ok: true, message });
       }
 
       handleTurnTimeout(room);

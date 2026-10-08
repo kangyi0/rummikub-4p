@@ -107,6 +107,30 @@ function clearSession() {
 function connectEvents() {
   if (eventSource) eventSource.close();
   eventSource = new EventSource(`/api/events?room=${encodeURIComponent(session.room)}&player=${encodeURIComponent(session.playerId)}`);
+  eventSource.addEventListener('session-ended', e => {
+    let message = '게임 세션이 종료되었습니다.';
+    try { message = JSON.parse(e.data).message || message; } catch (_) {}
+    if (eventSource) eventSource.close();
+    eventSource = null;
+    clearSession();
+    serverState = null;
+    draft = null;
+    moveHistory = [];
+    setScreen('lobby');
+    alert(message);
+  });
+  eventSource.addEventListener('player-removed', e => {
+    let message = '현재 방에서 제외되었습니다.';
+    try { message = JSON.parse(e.data).message || message; } catch (_) {}
+    if (eventSource) eventSource.close();
+    eventSource = null;
+    clearSession();
+    serverState = null;
+    draft = null;
+    moveHistory = [];
+    setScreen('lobby');
+    alert(message);
+  });
   eventSource.onmessage = e => {
     const state = JSON.parse(e.data);
     const changedTurn = serverState && serverState.turnNumber !== state.turnNumber;
@@ -415,7 +439,8 @@ function makeTile(tile, origin) {
     if ((delta.addedTileIds || []).includes(tile.id)) el.classList.add('previous-added');
   }
 
-  const lockedTable = origin.type === 'table' && serverState && !serverState.me.initialDone;
+  const originalHandIds = new Set(serverState?.me?.hand?.map(t => t.id) || []);
+  const lockedTable = origin.type === 'table' && serverState && !serverState.me.initialDone && !originalHandIds.has(tile.id);
   const movable = isMyTurn() && !lockedTable && serverState.status === 'playing';
   el.draggable = false;
   el.setAttribute('draggable', 'false');
@@ -440,7 +465,8 @@ function moveTileToMeld(targetIndex) {
     rememberMove();
     [tile] = draft.hand.splice(i, 1);
   } else {
-    if (!serverState.me.initialDone) return;
+    const fromMyHandThisTurn = new Set(serverState.me.hand.map(t => t.id)).has(dragging.tileId);
+    if (!serverState.me.initialDone && !fromMyHandThisTurn) return;
     const src = draft.table[dragging.meldIndex];
     if (!src) return;
     const i = src.findIndex(t => t.id === dragging.tileId);
@@ -468,7 +494,8 @@ function moveTileToNewMeld() {
     rememberMove();
     [tile] = draft.hand.splice(i, 1);
   } else {
-    if (!serverState.me.initialDone) return;
+    const fromMyHandThisTurn = new Set(serverState.me.hand.map(t => t.id)).has(dragging.tileId);
+    if (!serverState.me.initialDone && !fromMyHandThisTurn) return;
     const src = draft.table[dragging.meldIndex];
     if (!src) return;
     const i = src.findIndex(t => t.id === dragging.tileId);
@@ -601,7 +628,11 @@ function updateActionButtons() {
   $('commitBtn').disabled = !myTurn;
   $('passBtn').classList.toggle('hidden', serverState.poolCount !== 0);
   $('passBtn').disabled = !myTurn;
-  $('newGameBtn').disabled = !serverState.players || serverState.players.length < 2;
+  const isHost = !!serverState?.me?.isHost;
+  $('newGameBtn').classList.toggle('hidden', !isHost);
+  $('newGameBtn').disabled = !isHost;
+  $('stopGameBtn').classList.toggle('hidden', !isHost);
+  $('stopGameBtn').disabled = !isHost;
 }
 
 function updateTurnClock() {
@@ -637,14 +668,15 @@ function render() {
     setScreen('waiting');
     $('roomCodeBig').textContent = serverState.code;
     $('waitingTimerInfo').textContent = `턴 제한 시간: ${formatTurnLimit(serverState.turnLimitSec)}`;
-    $('waitingRoomInfo').textContent = `참가자 ${serverState.players.length} / 최대 ${serverState.maxPlayers}명`;
+    $('waitingRoomInfo').textContent = `사람 ${serverState.humanCount ?? serverState.players.filter(p => !p.isAI).length} / ${serverState.humanSlots ?? '-'}명 · AI ${serverState.aiCount ?? serverState.players.filter(p => p.isAI).length}명 · 총 ${serverState.players.length}명`;
     renderPlayerCards($('waitingPlayers'), serverState.players, true);
     const startBtn = $('startGameBtn');
     const isHost = !!serverState.me.isHost;
     startBtn.classList.toggle('hidden', !isHost);
     startBtn.disabled = !serverState.canStart;
+    $('endSessionBtn').classList.toggle('hidden', !isHost);
     $('waitingHostNote').textContent = isHost
-      ? (serverState.canStart ? '방장입니다. 원하는 구성이 되면 게임 시작을 누르세요.' : '게임을 시작하려면 최소 2명이 필요합니다.')
+      ? (serverState.canStart ? '방장입니다. 설정한 참가자가 모두 모였습니다. 게임 시작을 누르세요.' : `사람 참가자 ${serverState.humanSlots ?? 1}명이 모두 들어오고 총 2명 이상이어야 시작할 수 있습니다.`)
       : '방장이 게임을 시작할 때까지 기다려 주세요.';
     return;
   }
@@ -757,23 +789,81 @@ $('startGameBtn').onclick = async () => {
   }
 };
 
-$('newGameBtn').onclick = async () => {
-  if (!serverState?.players || serverState.players.length < 2) return;
-  const ok = confirm(`현재 게임을 끝내고 같은 방에서 새 게임을 시작할까요?\n${serverState.players.length}명에게 14장씩 새로 나눕니다.`);
-  if (!ok) return;
+function updateNewGameConfigOptions() {
+  const humansNow = serverState?.players?.filter(p => !p.isAI).length || 1;
+  const humanSel = $('newHumanCount');
+  const aiSel = $('newAiCount');
+  if (!humanSel || !aiSel) return;
+  for (const option of humanSel.options) option.disabled = false;
+  const humanCount = Number(humanSel.value);
+  for (const option of aiSel.options) option.disabled = humanCount + Number(option.value) > 4;
+  if (humanCount + Number(aiSel.value) > 4) aiSel.value = String(Math.max(0, 4 - humanCount));
+  $('newGameConfigNote').textContent = `현재 접속 중인 사람은 ${humansNow}명입니다. 사람 수를 줄이면 방장을 제외한 뒤늦게 들어온 참가자부터 방에서 나가게 됩니다. 사람+AI 합계는 2~4명이어야 합니다.`;
+}
+
+$('newGameBtn').onclick = () => {
+  if (!serverState?.me?.isHost) return;
+  const humansNow = serverState.players.filter(p => !p.isAI).length;
+  $('newHumanCount').value = String(Math.max(humansNow, serverState.humanSlots || humansNow));
+  $('newAiCount').value = String(serverState.aiCount ?? serverState.players.filter(p => p.isAI).length);
+  $('newTurnLimit').value = String(serverState.turnLimitSec || 0);
+  updateNewGameConfigOptions();
+  $('newGameDialog').showModal();
+};
+
+$('newHumanCount').addEventListener('change', updateNewGameConfigOptions);
+$('cancelNewGameBtn').onclick = () => $('newGameDialog').close();
+$('newGameForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!serverState?.me?.isHost) return;
+  const humanSlots = Number($('newHumanCount').value);
+  const aiCount = Number($('newAiCount').value);
+  const turnLimitSec = Number($('newTurnLimit').value);
+  if (humanSlots + aiCount < 2 || humanSlots + aiCount > 4) {
+    return alert('사람과 AI를 합쳐 2~4명으로 설정해 주세요.');
+  }
   try {
-    const out = await api('/api/action', { room: session.room, playerId: session.playerId, type: 'restart' });
+    const out = await api('/api/action', {
+      room: session.room,
+      playerId: session.playerId,
+      type: 'reconfigure',
+      humanSlots,
+      aiCount,
+      turnLimitSec,
+    });
+    $('newGameDialog').close();
     clearHandOrder();
     serverState = out;
     stateReceivedAt = Date.now();
     lastSoundTurnNumber = null;
     resetDraft();
     render();
-    setMessage('새 게임을 시작했습니다.', 'ok');
-  } catch (e) {
-    setMessage(e.message, 'error');
+    setMessage('새 게임 설정을 적용했습니다. 대기실에서 참가자를 확인한 뒤 시작하세요.', 'ok');
+  } catch (e2) {
+    alert(e2.message);
   }
-};
+});
+
+async function endCurrentSession() {
+  if (!serverState?.me?.isHost) return;
+  if (!confirm('현재 게임 세션을 완전히 종료할까요?\n이 방 코드는 더 이상 사용할 수 없습니다.')) return;
+  try {
+    const out = await api('/api/action', { room: session.room, playerId: session.playerId, type: 'endSession' });
+    if (eventSource) eventSource.close();
+    eventSource = null;
+    clearSession();
+    serverState = null;
+    draft = null;
+    moveHistory = [];
+    setScreen('lobby');
+    alert(out.message || '게임 세션이 종료되었습니다.');
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+$('stopGameBtn').onclick = endCurrentSession;
+$('endSessionBtn').onclick = endCurrentSession;
 
 $('undoMoveBtn').onclick = undoLastMove;
 

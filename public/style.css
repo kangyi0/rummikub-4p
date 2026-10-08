@@ -33,6 +33,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover { background: var(--accent-dark); }
 button.ghost { background: transparent; }
+button.danger-btn { background: #fff2f2; border-color: #c85b5b; color: var(--danger); }
+button.danger-btn:hover { background: #ffe5e5; }
 .hidden { display: none !important; }
 .app-shell { max-width: 1180px; margin: 0 auto; padding: 18px; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
@@ -209,3 +211,6 @@ dialog::backdrop { background: rgba(0,0,0,.42); }
   .player-chip span { font-size: 10px; }
   .waiting-players { grid-template-columns: 1fr 1fr; }
 }
+
+.dialog-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; flex-wrap:wrap; }
+#newGameDialog .dialog-inner { display:grid; gap:12px; min-width:min(520px, 80vw); }

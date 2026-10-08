@@ -1,5 +1,5 @@
-const CACHE_NAME = 'rummikub-shell-v2';
-const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
+const CACHE_NAME = 'rummikub-shell-v3';
+const SHELL = ['/', '/index.html', '/style.css?v=20261008-3', '/app.js?v=20261008-3', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL)).catch(() => {}));
@@ -19,29 +19,16 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
-  if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req)
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put('/index.html', copy)).catch(() => {});
-          return response;
-        })
-        .catch(() => caches.match('/index.html'))
-    );
-    return;
-  }
-
+  // Always prefer the deployed version. Cache is only an offline fallback.
   event.respondWith(
-    caches.match(req).then(cached => {
-      const fresh = fetch(req).then(response => {
+    fetch(req)
+      .then(response => {
         if (response && response.ok) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(req, copy)).catch(() => {});
         }
         return response;
-      }).catch(() => cached);
-      return cached || fresh;
-    })
+      })
+      .catch(() => caches.match(req).then(cached => cached || caches.match('/index.html')))
   );
 });
