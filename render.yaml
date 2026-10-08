@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: rummikub-multiplayer
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeployTrigger: commit

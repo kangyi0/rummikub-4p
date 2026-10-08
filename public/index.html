@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#245c4a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="루미큐브" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <title>2~4인 온라인 루미큐브</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>2~4인 온라인 루미큐브</h1>
+        <p class="subtitle">2~4명이 방 코드로 함께 플레이하거나 AI와 혼합해서 게임할 수 있습니다.</p>
+      </div>
+      <div class="top-actions"><button id="installBtn" class="ghost hidden">앱으로 설치</button><button id="rulesBtn" class="ghost">규칙</button></div>
+    </header>
+
+    <section id="lobby" class="card lobby">
+      <div class="lobby-grid">
+        <div class="panel">
+          <h2>방 만들기</h2>
+          <label>내 이름
+            <input id="createName" maxlength="20" placeholder="예: 강님" />
+          </label>
+          <label>한 턴 제한 시간
+            <select id="createTurnLimit">
+              <option value="30">30초</option>
+              <option value="45">45초</option>
+              <option value="60" selected>60초</option>
+              <option value="90">90초</option>
+              <option value="120">2분</option>
+              <option value="180">3분</option>
+              <option value="300">5분</option>
+              <option value="0">제한 없음</option>
+            </select>
+          </label>
+          <label>최대 참가 인원
+            <select id="createMaxPlayers">
+              <option value="2">2명</option>
+              <option value="3">3명</option>
+              <option value="4" selected>4명</option>
+            </select>
+          </label>
+          <label>AI 참가자 수
+            <select id="createAiCount">
+              <option value="0" selected>0명</option>
+              <option value="1">1명</option>
+              <option value="2">2명</option>
+              <option value="3">3명</option>
+            </select>
+          </label>
+          <p class="small timer-help">방장은 참가 인원과 AI 수를 정한 뒤 대기실에서 원하는 시점에 게임을 시작합니다.</p>
+          <button id="createBtn" class="primary">새 방 만들기</button>
+        </div>
+        <div class="divider">또는</div>
+        <div class="panel">
+          <h2>방 들어가기</h2>
+          <label>내 이름
+            <input id="joinName" maxlength="20" placeholder="예: 친구" />
+          </label>
+          <label>방 코드
+            <input id="joinCode" maxlength="6" placeholder="예: A7K9Q" autocapitalize="characters" />
+          </label>
+          <button id="joinBtn" class="primary">입장</button>
+        </div>
+      </div>
+      <p class="hint">같은 컴퓨터에서도 브라우저 창 두 개를 열어 시험할 수 있습니다.</p>
+    </section>
+
+    <section id="waiting" class="card hidden center">
+      <h2>참가자 대기실</h2>
+      <p>아래 방 코드를 함께 플레이할 사람에게 알려주세요.</p>
+      <div id="roomCodeBig" class="room-code">-----</div>
+      <p id="waitingTimerInfo" class="timer-info">턴 제한 시간: -</p>
+      <p id="waitingRoomInfo" class="small">참가자 - / -</p>
+      <div id="waitingPlayers" class="waiting-players"></div>
+      <p id="waitingHostNote" class="small"></p>
+      <div class="wait-actions"><button id="copyCodeBtn">방 코드 복사</button><button id="copyLinkBtn">초대 링크 복사</button><button id="startGameBtn" class="primary hidden">게임 시작</button></div>
+    </section>
+
+    <section id="game" class="hidden">
+      <div class="statusbar card">
+        <div><strong>방</strong> <span id="roomCode">-</span></div>
+        <div><strong>나</strong> <span id="meName">-</span> · <span id="myCount">0</span>장</div>
+        <div><strong>참가자</strong> <span id="playerCount">0</span>명</div>
+        <div><strong>남은 더미</strong> <span id="poolCount">0</span>장</div>
+        <div><strong>턴 제한</strong> <span id="turnLimitText">-</span></div>
+      </div>
+      <div id="playersBar" class="players-bar card"></div>
+
+      <div class="turn-row">
+        <div id="turnBanner" class="turn-banner">게임 준비 중</div>
+      </div>
+
+      <section class="card table-card">
+        <div class="section-title-row">
+          <h2>공용 테이블</h2>
+          <span id="tableHelp" class="small"></span>
+        </div>
+        <div id="table" class="table-zone"></div>
+        <div id="newMeldZone" class="new-meld-zone">여기에 타일을 끌어 놓으면 새 묶음이 됩니다</div>
+        <div class="table-timer-row">
+          <span class="table-timer-label">남은 시간</span>
+          <div id="turnClock" class="turn-clock" aria-live="polite">--:--</div>
+        </div>
+      </section>
+
+      <section class="card hand-card">
+        <div class="section-title-row">
+          <h2>내 패</h2>
+          <div class="sort-buttons">
+            <button id="sortColorBtn" class="ghost small-btn">색상순</button>
+            <button id="sortNumberBtn" class="ghost small-btn">숫자순</button>
+          </div>
+        </div>
+        <div id="hand" class="hand-zone"></div>
+      </section>
+
+      <div class="actions card">
+        <button id="newGameBtn" class="ghost">새 게임 시작</button>
+        <button id="undoMoveBtn" class="ghost">직전 한 수 되돌리기</button>
+        <button id="resetBtn" class="ghost">이번 턴 모두 되돌리기</button>
+        <button id="drawBtn">타일 1장 뽑기</button>
+        <button id="passBtn" class="ghost hidden">패스</button>
+        <button id="commitBtn" class="primary">턴 종료</button>
+      </div>
+      <p id="message" class="message" role="status"></p>
+    </section>
+  </main>
+
+  <dialog id="rulesDialog">
+    <div class="dialog-inner">
+      <h2>이 버전의 규칙</h2>
+      <ul>
+        <li>각 플레이어는 14장으로 시작합니다.</li>
+        <li><b>그룹</b>: 같은 숫자 3~4장, 색은 서로 달라야 합니다.</li>
+        <li><b>연속</b>: 같은 색의 연속 숫자 3장 이상입니다.</li>
+        <li>조커 2장을 사용할 수 있습니다.</li>
+        <li>첫 등록은 내 패만 사용하여 합계 30점 이상이어야 합니다.</li>
+        <li>첫 등록 뒤부터는 테이블의 기존 묶음을 재배치할 수 있습니다.</li>
+        <li>턴 종료 시 테이블의 모든 묶음이 유효해야 합니다.</li>
+        <li>공용 테이블의 각 묶음은 항상 숫자가 작은 쪽부터 자동 정렬되어 표시됩니다.</li>
+        <li>낼 수 없으면 타일 1장을 뽑고 턴을 넘깁니다.</li>
+        <li>방을 만들 때 한 턴 제한 시간을 정할 수 있습니다.</li>
+        <li>방을 만들 때 최대 참가 인원을 2~4명으로 정하고 AI 참가자 수를 선택할 수 있습니다.</li>
+        <li>방장은 대기실에서 참가자 구성을 확인한 뒤 게임을 시작합니다. 사람과 AI를 섞어서 플레이할 수 있습니다.</li>
+        <li>직전 플레이어의 턴에서 재배치된 기존 타일은 강조되고, 새로 내려놓은 타일은 다른 색 테두리로 표시됩니다.</li>
+        <li>턴이 바뀔 때 효과음이 납니다. 브라우저 정책상 첫 클릭 이후부터 소리가 재생됩니다.</li>
+        <li><b>새 게임 시작</b>을 누르면 같은 방과 같은 상대를 유지한 채 모든 타일을 다시 섞고 14장씩 새로 나눕니다.</li>
+        <li><b>직전 한 수 되돌리기</b>를 누르면 방금 옮긴 타일 한 번의 이동만 원래 위치로 되돌립니다. 여러 번 누르면 한 수씩 차례로 되돌릴 수 있습니다.</li>
+        <li>턴 타이머는 공용 테이블 바로 아래에 표시됩니다.</li>
+        <li>시간이 끝나면 이번 턴의 임시 이동은 취소되고, 타일 1장을 자동으로 뽑은 뒤 다음 플레이어 턴으로 넘어갑니다. 더미가 비었으면 자동 패스합니다.</li>
+      </ul>
+      <p class="small">참고: 이 MVP는 방을 서버 메모리에만 보관하므로 서버가 재시작되면 진행 중인 방은 사라집니다.</p>
+      <button id="closeRulesBtn" class="primary">확인</button>
+    </div>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>
